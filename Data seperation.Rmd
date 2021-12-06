@@ -1,0 +1,163 @@
+---
+title: "Red Wine Quality"
+author: "Nailah Rawnaq"
+date: "12/6/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+library(tidyverse)
+df <- read_csv("winequality-red.csv")
+```
+
+## Datasets
+This data set consist of 1,599 rows and 12 columns. The description of the columns are given below.
+
+- fixed acidity : most acids involved with wine or fixed or nonvolatile.
+- volatile acidity : the amount of acetic acid in wine, which at too high of levels can lead to an unpleasant, vinegar taste.
+- citric acid : found in small quantities, citric acid can add 'freshness' and flavor to wines.
+- residual sugar : the amount of sugar remaining after fermentation stops.
+- chlorides : the amount of salt in the wine.
+- free sulfur dioxide : the free form of SO2 exists in equilibrium between molecular SO2 (as a dissolved gas) and bisulfite ion.
+- total sulfur dioxide : amount of free and bound forms of S02.
+- density : the density of water is close to that of water depending on the percent alcohol and sugar content.
+- pH : describes how acidic or basic a wine is on a scale from 0 (very acidic) to 14 (very basic).
+- sulphates : a wine additive which can contribute to sulfur dioxide gas (S02) levels.
+- alcohol : the percent alcohol content of the wine
+- quality (score between 0 and 10)
+
+This is a data set from [*kaggle*](https://www.kaggle.com/uciml/red-wine-quality-cortez-et-al-2009) in a title of "Red Wine Quality".
+
+
+\pagebreak
+## Basic Stats
+```{r}
+df %>% 
+    summary()
+```
+
+\pagebreak
+## Boxplot for the variables according to the wine quality
+```{r}
+df %>% 
+    pivot_longer(-quality) %>% 
+    mutate(quality = as.factor(quality)) %>% 
+    ggplot(aes(quality, value, fill = name)) +
+    geom_boxplot(show.legend = F) +
+    facet_wrap(~name, scales = "free_y") +
+    scale_y_continuous(labels = NULL) +
+    labs(title = "Boxplot for the variables according to the wine quality")
+```
+We can see from this plot that mean level of some variables like alcohol, citric acid, pH, sulphates and volatile acidity.
+
+\pagebreak
+## Correlation among the variables
+```{r}
+corrplot::corrplot(cor(df))
+```
+
+\pagebreak
+## Table for shoing the important variable as a output of linear regression with highest magnitude
+```{r}
+cor(select(df, -quality)) %>% 
+    as.data.frame() %>% 
+    rownames_to_column() %>% 
+    pivot_longer(-rowname) %>% 
+    filter(value != 1) %>% 
+    arrange(-abs(value)) %>% 
+    group_by(name) %>% 
+    summarise(mean_corr = mean(abs(value))) %>% 
+    arrange(-mean_corr) %>% 
+    pander::pander()
+```
+Since fixed acidity has the higher mean absolute correlation so we going to eliminate this and fit a linear regression model to see find out the most important sets of variables.
+
+\pagebreak
+## Important variables
+```{r}
+(df %>% 
+    select(-`fixed acidity`) %>% 
+    lm(formula = quality ~ .) %>% 
+    summary())$coefficients %>% 
+    as.data.frame() %>% 
+    rownames_to_column() %>% 
+    filter(`Pr(>|t|)` < .05) %>% 
+    arrange(-abs(Estimate)) %>% 
+    pander::pander()
+```
+So according to this, variable chlorides and volatile acidity are the important variabes. So we will plot those two variables according to the quatity of wine.
+
+\pagebreak
+## Seperating the high and low class points (important variables)
+```{r}
+df %>% 
+    select(chlorides, `volatile acidity`, quality) %>% 
+    mutate(quality = if_else(quality <= 6,"Low", "high")) %>% 
+    ggplot(aes(chlorides, `volatile acidity`, fill = quality)) +
+    geom_hex(alpha = .7) +
+    scale_fill_viridis_d() +
+    scale_x_log10() +
+    labs(title = "Wine quality according to the top important variables")
+```
+We can see that this plot is not performing great to seperate the points. we will perform pca for this.
+
+\pagebreak
+## Seperating the high and low class points (PCA)
+```{r}
+(df %>% 
+    select(-quality) %>% 
+    princomp())$score %>% 
+    as.data.frame() %>% 
+    select(Comp.1, Comp.2) %>% 
+    bind_cols(quality = df$quality) %>% 
+    mutate(quality = if_else(quality <= 6,"Low", "high")) %>% 
+    ggplot(aes(Comp.1, Comp.2, fill = quality)) +
+    geom_hex(alpha = .7) +
+    scale_fill_viridis_d()
+```
+This is not also performing well to seperate the points. we will use LDA for it
+
+\pagebreak
+## Seperating the high and low class points (LDA)
+```{r}
+(as.matrix(select(df, -quality)) %*%
+(MASS::lda(quality ~ ., 
+          mutate(df,quality = 
+                     case_when(quality <= 4 ~ "Low",
+                               quality <= 6 ~ "Medium",
+                               TRUE ~ "high"))))$scaling) %>% 
+    as.data.frame() %>% 
+    bind_cols(quality = if_else(df$quality <= 6,"Low", "high")) %>%
+    ggplot(aes(LD1, LD2, fill = quality)) +
+    geom_hex(alpha = .7) +
+    scale_fill_viridis_d()
+```
+The output is much better than the previous two. And there is a seperable line for that.
+
+\pagebreak
+## Seperating the high and low class points (LDA)
+```{r}
+umap::umap(select(df, - quality))$layout %>% 
+    as.data.frame() %>% 
+    bind_cols(quality = if_else(df$quality <= 6,"Low", "high")) %>% 
+    ggplot(aes(V1, V2, fill = quality)) +
+    geom_hex(alpha = .7) +
+    scale_fill_viridis_d()
+```
+
+No the performance of Umap is not better than the LDA.
+
+
+
+
+
+
+
+
+
+
+
+
